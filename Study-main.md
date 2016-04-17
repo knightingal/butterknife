@@ -240,18 +240,129 @@ targetClassMap = {LinkedHashMap@9687}  size = 2
 
 我们可以从`targetClassMap`中读出诸如此类的以下信息：
 ```
-有两个类型中存在@Bind注解
-第一个类型为com.example.butterknife.SimpleActivity
-该类中有5个被@Bind注解的成员
-第一个成员名字是title，类型是android.widget.TextView，绑定至id号为2130968576
+有两个类中存在@Bind注解
+  第一个类为com.example.butterknife.SimpleActivity
+    该类中有5个被@Bind注解的成员
+    第一个成员名字是title，类型是android.widget.TextView，绑定至id号为2130968576
 
-
-依此类推
+。。。依此类推
 ```
+
+对ButterKnife注解解析完成，生成`targetClassMap`中的对应关系之后，就可以动态的生成绑定相关的代码。
+
+动态生成绑定代码由`bindingClass.brewJava()`实现。上面得到的`targetClassMap`中，每一个`bindingClass`对应一个Sample工程中的涉及ButterKnife注解的类。在`bindingClass.brewJava()`中，使用到了第三方类库[`JavaPoet`][javapoet]
+还是以`SimpleActivity`为例，以下代码首先根据`bindingClass.className`生成相关的类：
+```java
+TypeSpec.Builder result = TypeSpec.classBuilder(className)
+        .addModifiers(PUBLIC)
+        .addTypeVariable(TypeVariableName.get("T", ClassName.bestGuess(targetClass)));
+```
+
+这里`className`=`SimpleActivity$$ViewBinder`，`targetClass`=`SimpleActivity`
+
+`SimpleActivity`没有父类，于是通过以下代码给`SimpleActivity$$ViewBinder`设置父类`ViewBinder`
+
+```java
+  result.addSuperinterface(ParameterizedTypeName.get(VIEW_BINDER, TypeVariableName.get("T")));
+```
+
+于是我们到目前为止有了一个动态生成的类`SimpleActivity$$ViewBinder`
+
+```java
+public class SimpleActivity$$ViewBinder<T extends SimpleActivity> implements ViewBinder<T> {
+
+}
+
+```
+
+之后以下语句为该类添加`bind`方法：
+
+```java
+  result.addMethod(createBindMethod());
+```
+打开`createBindMethod()`方法可以看到，首先构造了一个名为`bind`的方法，该方法有一个`@Override`注解，`pulbic`，三个参数分别为`final Finder finder, final T target, Object source`。
+
+```java
+MethodSpec.Builder result = MethodSpec.methodBuilder("bind")
+        .addAnnotation(Override.class)
+        .addModifiers(PUBLIC)
+        .addParameter(FINDER, "finder", FINAL)
+        .addParameter(TypeVariableName.get("T"), "target", FINAL)
+        .addParameter(Object.class, "source");
+```
+
+对于`@Binde`注解的`View`类型的成员变量，处理这些元素的代码在这里
+
+```java
+for (ViewBindings bindings : viewIdMap.values()) {
+        addViewBindings(result, bindings);
+}
+```
+
+在`addViewBindings`方法中最终调用以下语句针对每一个被注解的成员变量生成具体的执行代码：
+
+```java
+result.addStatement("view = finder.findRequiredView(source, $L, $S)", bindings.getId(),
+            asHumanDescription(requiredViewBindings));
+```
+
+```java
+result.addStatement("target.$L = finder.castView(view, $L, $S)", fieldBinding.getName(),
+            bindings.getId(), asHumanDescription(fieldBindings));
+```
+
+比如对于`SimpleActivity`中的成员变量`title`，其最终生成的执行代码为
+
+```java
+view = finder.findRequiredView(source, 2130968576, "field 'title'");
+target.title = finder.castView(view, 2130968576, "field 'title'");
+```
+
+我们暂时可以先不用关心`findRequiredView`和`castView`的实现分别是什么。
+
+等这些代码都构建完成后，调用`writeTo(filer);`将构建的类写入文件。最终动态生成的源码可在Sample工程构建完成后的`build\generated\source\apt\debug\com\example\butterknife`目录下找到。
+
+
+绑定
+
+绑定操作位于app运行时。通常在一个`Activity`的`onCreate`方法内调用`ButterKnife.bind(this);`执行。
+
+在类`ButterKnife`有多个`bind`方法的重载，`Activity`中调用的重载版本是
+
+```java
+public static void bind(@NonNull Activity target) {
+  bind(target, target, Finder.ACTIVITY);
+}
+```
+
+注意这里的第三个参数`Finder.ACTIVITY`，它是枚举`Finder`下的一个枚举值，而`Finder`中声明了两个抽象方法
+
+```java
+protected abstract View findView(Object source, int id);
+
+public abstract Context getContext(Object source);
+```
+
+又分别在包括`Finder.ACTIVITY`中的一系列枚举值当中做了实现。所以这里实际上可以认为Finder是一个抽象类，而`Finder.ACTIVITY`，`Finder.VIEW`，`Finder.DIALOG`是这个抽象类的实例，他们各自对以上两个抽象方法做了自己的实现。
+
+后续的绑定流程中，`Finder.ACTIVITY`会以`Finder`类型的身份出现，当看到类似`finder.findView(source, id)`这样的语句时，我们就可以知道去哪里查看其内部实现。
+
+在`bind(@NonNull Object target, @NonNull Object source, @NonNull Finder finder)`中，首先根据`target`的类型`targetClass`，即`SimpleActivity`找到其对应的`ViewBinder`，该操作位于`findViewBinderForClass(targetClass)`中。
+
+在`findViewBinderForClass`方法中，针对每个`targetClass`如果是初次进入，会通过`Class.forName(String className)`方法动态加载其对应的`ViewBinder`类。这里`className`为`targetClass`的名字和`$$ViewBinder`拼接。以`SimpleActivity`为例，取到的类就是`com.example.butterknife.SimpleActivity$$ViewBinder`，即我们之前在`build\generated\source\apt\debug\com\example\butterknife`下动态生成的类。
+
+如果`ViewBinder`类获取成功，获取其实例，以`targetClass`为key放入Map `BINDERS`中，下次再找`targetClass`对应的`ViewBinder`类实例时可直接在`BINDERS`中查找。返回`ViewBinder`类的实例。
+
+
+
+
+
 
 以[https://github.com/knightingal/butterknife/tree/study-base][sample]中的Sample代码为例。
 
 
 
 
+
+[javapoet]:https://github.com/square/javapoet
 [sample]:https://github.com/knightingal/butterknife/tree/study-base
