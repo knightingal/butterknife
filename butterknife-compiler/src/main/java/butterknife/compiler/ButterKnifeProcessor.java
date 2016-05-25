@@ -153,6 +153,7 @@ public final class ButterKnifeProcessor extends AbstractProcessor {
     Set<TypeElement> erasedTargetNames = new LinkedHashSet<>();
 
     // Process each @Bind element.
+    Set<? extends Element> elementsWithBind = env.getElementsAnnotatedWith(Bind.class);
     for (Element element : env.getElementsAnnotatedWith(Bind.class)) {
       if (!SuperficialValidation.validateElement(element)) continue;
       try {
