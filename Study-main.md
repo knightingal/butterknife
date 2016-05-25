@@ -179,14 +179,13 @@ targetClassMap = {LinkedHashMap@9687}  size = 2
 ```
 
 我们可以从`targetClassMap`中读出诸如此类的以下信息：
-```
-有两个类中存在@Bind注解
-  第一个类为com.example.butterknife.SimpleActivity
-    该类中有5个被@Bind注解的成员
-    第一个成员名字是title，类型是android.widget.TextView，绑定至id号为2130968576
 
-。。。依此类推
-```
+* 有两个类中存在@Bind注解
+*   第一个类为com.example.butterknife.SimpleActivity
+*     该类中有5个被@Bind注解的成员
+*     第一个成员名字是title，类型是android.widget.TextView，绑定至id号为2130968576
+* 。。。依此类推
+
 
 至此，对ButterKnife的`@Bind`注解解析完成，并在`targetClassMap`中建立起了view id和view实例的对应关系。接下来的任务就是动态的生成绑定相关的代码。
 
@@ -270,7 +269,7 @@ target.title = finder.castView(view, 2130968576, "field 'title'");
 
 ## 0X3 第三步：运行时绑定
 
-绑定操作位于app运行时。通常在一个`Activity`的`onCreate`方法内调用`ButterKnife.bind(this);`触发执行。
+绑定操作位于app运行时。通常由在`Activity`的`onCreate`方法内调用`ButterKnife.bind(this)`触发执行。
 
 打开`ButterKnife`类的定义，可以看到有多个`bind`方法的重载，`Activity`中调用的重载版本是
 
@@ -288,17 +287,17 @@ protected abstract View findView(Object source, int id);
 public abstract Context getContext(Object source);
 ```
 
-又分别在包括`Finder.ACTIVITY`在内的一系列枚举值当中做了实现。所以我们实际上可以认为Finder是一个抽象类，而`Finder.ACTIVITY`，`Finder.VIEW`，`Finder.DIALOG`是这个抽象类的实例，他们各自对以上两个抽象方法做了自己的实现。
+又分别在包括`Finder.ACTIVITY`在内的一系列枚举值当中做了实现。所以我们实际上可以认为`Finder`是一个抽象类，而`Finder.ACTIVITY`，`Finder.VIEW`，`Finder.DIALOG`是这个抽象类的实例，他们各自对以上两个抽象方法做了自己的实现。
 
 后续的绑定流程中，`Finder.ACTIVITY`会以`Finder`类型的身份出现，当看到类似`finder.findView(source, id)`这样的语句时，我们就可以知道去哪里查看其内部实现。
 
 在`bind(@NonNull Object target, @NonNull Object source, @NonNull Finder finder)`中，首先根据`target`的类型`targetClass`，在这里即`SimpleActivity`找到其对应的`ViewBinder`，该操作位于`findViewBinderForClass(targetClass)`中。
 
-在`findViewBinderForClass`方法中，针对每个`targetClass`，如果是初次进入，会通过`Class.forName(String className)`方法动态加载其对应的`ViewBinder`类。这里`className`为`targetClass`的名字和`$$ViewBinder`拼接。以`SimpleActivity`为例，取到的类就是`com.example.butterknife.SimpleActivity$$ViewBinder`，即我们之前在`build\generated\source\apt\debug\com\example\butterknife`下动态生成的类。
+在`findViewBinderForClass`方法中，针对每个`targetClass`，如果是初次运行该方法，会通过`Class.forName(String className)`方法动态加载其对应的`ViewBinder`类。这里`className`为`targetClass`的名字和`$$ViewBinder`拼接。以`SimpleActivity`为例，取到的类就是`com.example.butterknife.SimpleActivity$$ViewBinder`，即我们之前在`build\generated\source\apt\debug\com\example\butterknife`下动态生成的类。
 
 如果`ViewBinder`类获取成功，`newInstance`方法获取其实例，以`targetClass`为key放入Map `BINDERS`中，下次再找`targetClass`对应的`ViewBinder`类实例时可直接在`BINDERS`中查找。最后返回这个`ViewBinder`类的实例。
 
-取到了对应的`ViewBinder`实例之后，立即执行`viewBinder.bind(finder, target, source);`这里的`finder`是刚才的`Finder.ACTIVITY`，`target`和`source`都是调用`ButterKnife.bind`的`SimpleActivity`实例。
+取到了对应的`ViewBinder`实例之后，立即执行`viewBinder.bind(finder, target, source)`这里的`finder`是刚才的`Finder.ACTIVITY`，`target`和`source`都是调用`ButterKnife.bind`的`SimpleActivity`实例。
 
 这里的`viewBinder.bind(finder, target, source);`执行的就是之前第二步中动态构造出来的方法，里面执行了一系列具体的`view`绑定操作，就是我们在第二步中暂时不用关心的那两行代码：
 
@@ -310,7 +309,41 @@ target.title = finder.castView(view, 2130968576, "field 'title'");
 
 现在我们需要了解这两个代码具体是怎么执行的绑定操作。
 
-首先看`finder.findRequiredView(source, 2130968576, "field 'title'")`这个方法的调用，首先会调用`Finder.ACTIVITY`中的`findView(Object source, int id)`实现版本，可以看到该版本的`findView(Object source, int id)`将`source`强转为`Activity`类型后调用了它的 `findViewById(id)`方法，就是我们写到吐的那个方法。该方法返回了一个`View`类型变量。如果我们手写`findViewById(id)`的话，通常会对其返回值进行一次类型转换，转换为这个`View`的实际类型，比如最常见的`TextView`，`ListView`这种。而在这里，这种类型转换在接下来的`finder.castView(view, 2130968576, "field 'title'");`中进行（`findRequiredView`方法内虽然自带了一次`castView`调用，但是`findRequiredView`的返回值是`View`类型，所以这里的类型转换并没有起作用）。`castView`方法会根据它的模板类型`T`，即返回值的类型自行推断需要将`view`转换的目标类型。最后将返回值赋值给`target.title`即`SimpleActivity`的`title`成员变量，至此整个绑定操作完成。
+先看`finder.findRequiredView(source, 2130968576, "field 'title'")`这个方法，它首先会调用`Finder.ACTIVITY`中的`findView(Object source, int id)`实现版本，可以看到该版本的`findView(Object source, int id)`
+
+```java
+@Override protected View findView(Object source, int id) {
+    return ((Activity) source).findViewById(id);
+}
+```
+
+将`source`强转为`Activity`类型后调用了它的 `findViewById(id)`方法，就是我们写到吐的那个方法。该方法返回了一个`View`类型变量。
+
+如果我们手写`findViewById(id)`的话，通常会对其返回值进行一次类型转换，转换为这个`View`的实际类型，比如最常见的`TextView`，`ListView`这种。而在这里，这种类型转换在接下来的`target.title = finder.castView(view, 2130968576, "field 'title'")`中进行（`findRequiredView`方法内虽然自带了一次`castView`调用，但是`findRequiredView`的返回值是`View`类型，所以这里的类型转换并没有起作用）。
+
+```java
+public <T> T castView(View view, int id, String who) {
+    try {
+      return (T) view;
+    } catch (ClassCastException e) {
+      if (who == null) {
+        throw new AssertionError();
+      }
+      String name = getResourceEntryName(view, id);
+      throw new IllegalStateException("View '"
+          + name
+          + "' with ID "
+          + id
+          + " for "
+          + who
+          + " was of the wrong type. See cause for more info.", e);
+    }
+  }
+```
+
+`castView`方法会根据它的模板类型`T`，即返回值的类型（此处为`target.title`的类型`TextView`）自行推断需要将`view`转换的目标类型。最后将返回值赋值给`target.title`即`SimpleActivity`的`title`成员变量，至此整个绑定操作完成。
+
+到此为止，butterknife的工作就结束了。
 
 
 
