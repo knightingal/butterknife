@@ -7,7 +7,7 @@
 ButterKnife工作分为三部分，
 
 1. 搜索代码中被```@Bind```注解标记的元素(feild或method)，将注解中的id号与元素建立对应关系
-2. 动态生成绑定相关的代码
+2. 动态生成绑定操作依赖的代码
 3. 在用户调用的```bing```方法中执行最后的绑定
 
 前两步在预处理过程中执行，最后一步在app运行过程中由app代码调用执行。
@@ -195,11 +195,11 @@ targetClassMap = {LinkedHashMap@9687}  size = 2
 * 。。。依此类推
 
 
-至此，对ButterKnife的`@Bind`注解解析完成，并在`targetClassMap`中建立起了view id和view实例的对应关系。接下来的任务就是动态的生成绑定相关的代码。
+至此，对ButterKnife的`@Bind`注解解析完成，并在`targetClassMap`中建立起了view id和view实例的对应关系。接下来的任务就是动态的生成绑定依赖的代码。
 
-## 0X2 第二步：动态生成绑定相关代码
+## 0X2 第二步：动态生成绑定依赖的代码
 
-在第一步中，我们得到了有很多个`bindingClass`的map，其中每一个`bindingClass`对应一个Sample工程中的涉及ButterKnife注解的类，其中包含了一系列需要ButterKnife处理的信息。这一步就根据这些信息调用`bindingClass.brewJava()`动态生成绑定相关代码。这里使用到了第三方类库[`JavaPoet`][javapoet]
+在第一步中，我们得到了有很多个`bindingClass`的map，其中每一个`bindingClass`对应一个Sample工程中的涉及ButterKnife注解的类，其中包含了一系列需要ButterKnife处理的信息。这一步就根据这些信息调用`bindingClass.brewJava()`动态生成绑定依赖的代码。这里使用到了第三方类库[`JavaPoet`][javapoet]
 
 还是以`SimpleActivity`为例，以下代码首先根据`bindingClass.className`生成相关的类：
 ```java
