@@ -2,7 +2,7 @@
 ------------------------------
 ## 0X0 前言
 
-做过Android开发的猿类应该都知道ButterKnife这么个东西。这个库可以大大的简化我们的代码，让我们少写很多`findViewById`和`setOnClickListener`这种代码。网上有很多关于怎么使用这个库的文章，然而关于这个库到底是如何工作的分析，似乎并不多。我在研究了一些这个库的源码之后，觉得还是有点意思的，在这里简要的做一下分析并分享出来。
+做过Android开发的猿类很多都知道ButterKnife这么个东西。这个库可以大大的简化我们的代码，让我们少写很多`findViewById`和`setOnClickListener`这种代码。网上有很多关于怎么使用这个库的文章，并且很多人也知道这个库的工作原理，但是关于这个库的系统性的源码分析的文章，似乎并不多。我在研究了一些这个库的源码之后，觉得还是有点意思的，在这里简单的做一下分享。
 
 ButterKnife工作分为三部分，
 
@@ -12,13 +12,21 @@ ButterKnife工作分为三部分，
 
 前两步在预处理过程中执行，最后一步在app运行过程中由app代码调用执行。
 
-下面依据源码依次分析各个步骤的执行过程。
+本文以项目源码附带的Sample工程的构建过程为例，依次分析各个步骤的执行过程。但在此之前我有义务先给出butterknife的官方源码仓库的地址：
+
+> <https://github.com/JakeWharton/butterknife>
+
+由于这个开源项目的版本迭代速度很快，随着时间的推移，本文中展示的代码可能会因为过时而和官方仓库中的产生较大出入，所以我再另外给出我写这篇文章时从官方仓库中fork出来的分支的地址：
+
+> <https://github.com/knightingal/butterknife>
+
+以便读者发现和官方最新的代码有出入时做参考。
 
 ## 0X1 第一步：解析注解，生成对应关系
 
 和很多其他Android第三方类库不同，ButterKnife的大部分代码执行在抽象处理器中。抽象处理器的工作在整个Android工程的构建阶段，由javac进行调用。我们可以把抽象处理器理解为类似c语言构建过程中的预处理器的角色，它在真正的编译器被输入源码之前预先将代码做了一些处理。
 
-抽象处理器需要在META-INF中进行注册才能工作。我们可以在butterknife-x.x.x.jar的/META-INF/services/javax.annotation.processing.Processor中看到注册的抽象处理器`butterknife.compiler.ButterKnifeProcessor`（不同版本的butterknife这个抽象处理器的包路径可能有所不同，本文以当前最新版本8.x为准，下同）。该类继承了jdk中的`javax.annotation.processing.AbstractProcessor`
+抽象处理器需要在META-INF中进行注册才能工作。我们可以在butterknife-x.x.x.jar的/META-INF/services/javax.annotation.processing.Processor中看到注册的抽象处理器`butterknife.compiler.ButterKnifeProcessor`。该类继承了jdk中的`javax.annotation.processing.AbstractProcessor`
 
 
 抽象处理逻辑的入口在`butterknife.compiler.ButterKnifeProcessor`这个类的`public boolean process(Set<? extends TypeElement> elements, RoundEnvironment env)`方法。
@@ -326,18 +334,7 @@ public <T> T castView(View view, int id, String who) {
     try {
       return (T) view;
     } catch (ClassCastException e) {
-      if (who == null) {
-        throw new AssertionError();
-      }
-      String name = getResourceEntryName(view, id);
-      throw new IllegalStateException("View '"
-          + name
-          + "' with ID "
-          + id
-          + " for "
-          + who
-          + " was of the wrong type. See cause for more info.", e);
-    }
+      // 处理一些几乎不可能发生的异常情况
   }
 ```
 
@@ -345,14 +342,12 @@ public <T> T castView(View view, int id, String who) {
 
 到此为止，butterknife的工作就结束了。
 
+## 0X4 结束前再写点废话
 
-
-
-以[https://github.com/knightingal/butterknife/tree/study-base][sample]中的Sample代码为例。
+随着`SimpleActivity`的`title`变量找到了它在布局文件中对应的`TextView`，本文对butterknife的工作原理的源码分析也告一段落。写这篇文章的时间跨度实在有点长，3月份开始看butterknife的源码并自行调试，4月份开始打草稿，懒癌发作拖拖拉拉搞到今天已经是5月底，再到github上一看发现本文中最为核心的`@Bind`注解居然不见了，看的我一脸懵逼（后来仔细一看改名为`@BindView`了），不得不佩服自己当初手快fork了一个分支出来的先见之明。现在还不知道距离两个月前代码官方又做了哪些修改，但是不管怎么改，工作原理应该还是没有太大变化的。本文暂且还是基于7两个月前的代码，地址我已经在开头贴出来了。
 
 
 
 
 
 [javapoet]:https://github.com/square/javapoet
-[sample]:https://github.com/knightingal/butterknife/tree/study-base
